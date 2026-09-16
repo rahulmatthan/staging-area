@@ -1,0 +1,34 @@
+#!/bin/zsh
+# stage — put an HTML page up at exmachina.in/staging-area/<slug>/ or take it down.
+set -e
+REPO="$HOME/Coding/staging-area"
+BASE="https://exmachina.in/staging-area"
+cmd="$1"; slug="$2"; src="$3"
+cd "$REPO"
+case "$cmd" in
+  up)
+    [[ -n "$slug" && -n "$src" ]] || { echo "usage: stage up <slug> <file-or-folder>"; exit 1; }
+    [[ "$slug" =~ ^[a-z0-9-]+$ ]] || { echo "slug: lowercase letters, digits, hyphens"; exit 1; }
+    rm -rf "$slug"; mkdir -p "$slug"
+    if [[ -d "$src" ]]; then
+      rsync -a --exclude .git --exclude .DS_Store "$src/" "$slug/"
+      [[ -f "$slug/index.html" ]] || { html=$(ls "$slug"/*.html 2>/dev/null | head -1); [[ -n "$html" ]] && mv "$html" "$slug/index.html"; }
+    else
+      cp "$src" "$slug/index.html"
+    fi
+    git add -A "$slug" && git commit -q -m "up: $slug" && git push -q
+    echo "$BASE/$slug/   (live in about a minute)"
+    ;;
+  down)
+    [[ -n "$slug" && -d "$slug" ]] || { echo "usage: stage down <slug>   (nothing staged at '$slug')"; exit 1; }
+    git rm -rq "$slug" && git commit -q -m "down: $slug" && git push -q
+    echo "taken down: $BASE/$slug/"
+    ;;
+  list)
+    for d in */; do d=${d%/}; [[ "$d" == bin ]] && continue
+      when=$(git log -1 --format=%ad --date=short -- "$d" 2>/dev/null)
+      echo "$d	since $when	$BASE/$d/"
+    done
+    ;;
+  *) echo "usage: stage up <slug> <file-or-folder> | stage down <slug> | stage list"; exit 1 ;;
+esac
